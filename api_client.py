@@ -146,6 +146,26 @@ def search_by_location(location: str, radius_km: float) -> Optional[Dict[str, An
         st.error(f"Error searching by location: {e}")
         return None
 
+@st.cache_data(ttl=600)
+def get_analytics_data() -> Optional[List[Dict[str, Any]]]:
+    """
+    Fetch the full visualization dataset from the API (backed by PostgreSQL).
+    Returns None when the endpoint is unavailable (503 = DATABASE_URL not set
+    on the backend) so the caller can fall back to the local bundled CSV.
+    Cached for 10 minutes to avoid re-fetching on every page interaction.
+    """
+    try:
+        response = requests.get(
+            f"{get_api_url()}/analytics/data",
+            headers=get_headers(),
+            timeout=15,
+        )
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception:
+        return None
+
 def check_api_health() -> bool:
     """Check if the API is reachable. Does NOT require auth (/healthz is open)."""
     try:

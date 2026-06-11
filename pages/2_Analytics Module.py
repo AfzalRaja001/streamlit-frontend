@@ -7,25 +7,37 @@ import os
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from api_client import check_api_health
+from api_client import check_api_health, get_analytics_data
 
 st.set_page_config(page_title="Analytics Dashboard", layout="wide")
 
-# Check API (optional for analytics)
-api_status = check_api_health()
-if not api_status:
-    st.warning("⚠️ API is offline. Analytics will use cached data only.")
-
 st.title('🏘️ Real Estate Analytics Dashboard')
 
-# Load data from the Streamlit app folder (analytics uses historical data)
+# ── Data loading strategy ─────────────────────────────────────────────────────
+# 1. Try the /analytics/data API endpoint (backed by PostgreSQL when configured).
+# 2. Fall back to the bundled CSV when the endpoint is unavailable (503 means
+#    DATABASE_URL is not set on the backend) or the API is down entirely.
+# This means the page always works regardless of database configuration.
+
 data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'data_viz1.csv')
 
-try:
-    new_df = pd.read_csv(data_path)
-except:
-    st.error("❌ Cannot load analytics data. Please ensure data files are available.")
-    st.stop()
+with st.spinner("Loading analytics data..."):
+    api_records = get_analytics_data()
+
+if api_records is not None:
+    new_df = pd.DataFrame(api_records)
+    st.caption("📊 Data source: PostgreSQL (live)")
+else:
+    # API not available or DATABASE_URL not configured — use bundled CSV
+    try:
+        new_df = pd.read_csv(data_path)
+        if not check_api_health():
+            st.warning("⚠️ API is offline. Analytics will use cached data only.")
+        else:
+            st.caption("📊 Data source: local CSV (database not configured)")
+    except Exception:
+        st.error("❌ Cannot load analytics data. Please ensure data files are available.")
+        st.stop()
 
 # Sidebar filters
 st.sidebar.header('Filters')
